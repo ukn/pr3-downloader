@@ -8,6 +8,8 @@ Sciangnij wszystkiej nagrania swojej ulubione audycji Trojki w formacie mp3
 
 `strona` - opcjonalnie od ktorej strony zaczac sciagac; domysline 1
 
+Linki do audycji sa tutaj https://www.polskieradio.pl/9,Trojka/30,Audycje
+
 # Na przykladzie Aksamitu
 
 `./pr3-downloader.py https://www.polskieradio.pl/9/5360 5`
