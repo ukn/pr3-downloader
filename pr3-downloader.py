@@ -31,7 +31,7 @@ def getContent(base_url, page_number=1):
             articles = get_arts_from_pages(ses, base_url, page_no)
 
         print("  Page", page_no, "of", last_page,
-            "(", len(articles), "files )")
+              "(", len(articles), "files )")
 
         for article in articles:
             article_title = article.split(",")[-1:][0]
@@ -40,15 +40,21 @@ def getContent(base_url, page_number=1):
             try:
                 mp3_mess = article_html.xpath(
                     "//aside[@id = 'box-sounds']//text()")[1]
-            except:
-                print("    Can't find mp3 for",
-                    article_title, "so skipping")
-                continue
-            regex = re.compile(r"\/\/static\.prsa\.pl/.+\.mp3")
-            matchObj = regex.search(mp3_mess).group(0)
+                regex = re.compile(r"\/\/static\.prsa\.pl/.+\.mp3")
+                file_url = regex.search(mp3_mess).group(0)
+                file_full_url = "https:" + file_url
+            except IndexError:
+                try:
+                    mp3_media = article_html.xpath(
+                        "//a[@class = 'pr-media-play']//@data-media")[0]
+                    file_full_url = "https:" + json.loads(mp3_media)['file']
+                except IndexError:
+                    print("    Can't find mp3 for",
+                          article_title, "so skipping")
+                    continue
             files_2_download.append(
-                {"url": "https:" + matchObj, "file": article_title + ".mp3"})
-        ThreadPool(6).map(download, files_2_download)
+                {"url": file_full_url, "file": article_title + ".mp3"})
+        ThreadPool(1).map(download, files_2_download)
 
 
 def get_arts_from_pages(ses, base_url, page_number):
@@ -58,6 +64,7 @@ def get_arts_from_pages(ses, base_url, page_number):
     articles = page_html.xpath(
         "/html/body/div[2]/form/div[1]/div[1]/div[3]/div[1]/div[2]/div[2]/div/div[1]/div/section/article")
     return list(map(lambda art: PR3_BASE_URL + art.xpath(".//a/@href")[0], articles))
+
 
 def get_arts_from_tabs_content(ses, tab_options, page_number):
     regex = re.compile("\((.+)\)")
@@ -69,8 +76,7 @@ def get_arts_from_tabs_content(ses, tab_options, page_number):
                "Accept-Encoding": "gzip, deflate, br",
                "Content-Type": "application/json; charset=utf-8",
                "X-Requested-With": "XMLHttpRequest",
-               "Origin": "https://www.polskieradio.pl",
-               "Referer": "https://www.polskieradio.pl/9/395"}
+               "Origin": "https://www.polskieradio.pl"}
 
     params = {"boxInstanceId": int(objs[0]), "tabId": int(objs[1]), "sectionId": int(objs[3]), "categoryId": int(objs[4]),
               "categoryType": int(objs[5]), "subjectIds": objs[6], "tagIndexId": int(objs[7]),
@@ -79,10 +85,13 @@ def get_arts_from_tabs_content(ses, tab_options, page_number):
               "pagerMode": 0, "openArticlesInParentTemplate": False,
               "idSectionFromUrl": int(objs[11]), "maxDocumentAge": int(objs[12]), "showCategoryForArticle": False}
     page_with_tabs = ses.post(PR3_BASE_URL +
-                             "/CMS/TemplateBoxesManagement/TemplateBoxTabContent.aspx/GetTabContent",
-                             json=params, headers=headers)
-    content_html = html.fromstring(json.loads(page_with_tabs.text)['d']['Content'])
+                              "/CMS/TemplateBoxesManagement/TemplateBoxTabContent.aspx/GetTabContent",
+                              json=params, headers=headers)
+    content_html = html.fromstring(
+        json.loads(page_with_tabs.text)['d']['Content'])
     articles_html = content_html.xpath(".//ul/li//a/@href")
+    if not articles_html:
+        articles_html = content_html.xpath("./section/article/a/@href")
     articles_url = list(map(lambda art: PR3_BASE_URL + art, articles_html))
     return articles_url
 
