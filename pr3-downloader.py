@@ -61,9 +61,12 @@ def get_arts_from_pages(ses, base_url, page_number):
     list_page_url = base_url + "/Strona/" + str(page_number)
     page_get = ses.get(list_page_url)
     page_html = html.fromstring(page_get.text)
-    articles = page_html.xpath(
-        "/html/body/div[2]/form/div[1]/div[1]/div[3]/div[1]/div[2]/div[2]/div/div[1]/div/section/article")
-    return list(map(lambda art: PR3_BASE_URL + art.xpath(".//a/@href")[0], articles))
+    articles_div = page_html.xpath(
+        "/html/body/div[2]/form/div[1]/div[1]/div[3]/div[1]/div[2]/div[2]/div/div[1]/div")[0]
+    articles = articles_div.xpath("./section/article/a/@href")
+    if not articles:
+        articles = articles_div.xpath("./ul/li/a/@href")
+    return list(map(lambda art: PR3_BASE_URL + art, articles))
 
 
 def get_arts_from_tabs_content(ses, tab_options, page_number):
