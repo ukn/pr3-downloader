@@ -62,7 +62,7 @@ def get_arts_from_pages(ses, base_url, page_number):
     page_get = ses.get(list_page_url)
     page_html = html.fromstring(page_get.text)
     articles_div = page_html.xpath(
-        "/html/body/div[2]/form/div[1]/div[1]/div[3]/div[1]/div[2]/div[2]/div/div[1]/div")[0]
+        "/html/body/div[2]/form/div[1]/div[1]/div[3]/div[1]/div[*]/div[2]/div/div[1]/div")[0]
     articles = articles_div.xpath("./section/article/a/@href")
     if not articles:
         articles = articles_div.xpath("./ul/li/a/@href")
