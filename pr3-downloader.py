@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import os
 import re
 from sys import argv
 import json
@@ -9,9 +10,13 @@ from lxml import html
 from lxml import etree as et
 import requests
 
+DEBUG = False
+if "PR3_DEBUG" in os.environ:
+    DEBUG = bool(os.environ["PR3_DEBUG"])
+    print("DEBUG - verbose logging and not downloading, doing first element only")
+
 
 PR3_BASE_URL = "https://www.polskieradio.pl"
-
 
 def getContent(base_url, page_number=1):
     ses = requests.Session()
@@ -54,32 +59,35 @@ def getContent(base_url, page_number=1):
                     continue
             files_2_download.append(
                 {"url": file_full_url, "file": article_title + ".mp3"})
+            if DEBUG > 1:
+                print("ARTICLE BODY", article_body.text)
+            if DEBUG:
+                break
         ThreadPool(1).map(download, files_2_download)
+        if DEBUG:
+            break
 
+def get_articles_hrefs(html_text):
+    articles_hrefs = html_text.xpath("./ul/li//a/@href")
+    if not articles_hrefs:
+        articles_hrefs = html_text.xpath("./section/article/a/@href")
+    if DEBUG > 1:
+        print("ARTICLES HREFS", articles_hrefs)
+    return articles_hrefs
 
 def get_arts_from_pages(ses, base_url, page_number):
     list_page_url = base_url + "/Strona/" + str(page_number)
     page_get = ses.get(list_page_url)
     page_html = html.fromstring(page_get.text)
     articles_div = page_html.xpath(
-        "/html/body/div[2]/form/div[1]/div[1]/div[3]/div[1]/div[*]/div[2]/div/div[1]/div")[0]
-    articles = articles_div.xpath("./section/article/a/@href")
-    if not articles:
-        articles = articles_div.xpath("./ul/li/a/@href")
-    return list(map(lambda art: PR3_BASE_URL + art, articles))
+        "//form/div[1]/div[1]/div[3]/div[1]/div[*]/div[2]/div/div[1]/div")[0]
+    return list(map(lambda art: PR3_BASE_URL + art, get_articles_hrefs(articles_div)))
 
 
 def get_arts_from_tabs_content(ses, tab_options, page_number):
     regex = re.compile("\((.+)\)")
     matchObjs = regex.search(tab_options).group(1).split(',')
     objs = list(map(lambda match_obj: match_obj.strip(), matchObjs))
-
-    headers = {"Host": "www.polskieradio.pl",
-               "Accept": "application/json, text/javascript, */*; q=0.01",
-               "Accept-Encoding": "gzip, deflate, br",
-               "Content-Type": "application/json; charset=utf-8",
-               "X-Requested-With": "XMLHttpRequest",
-               "Origin": "https://www.polskieradio.pl"}
 
     params = {"boxInstanceId": int(objs[0]), "tabId": int(objs[1]), "sectionId": int(objs[3]), "categoryId": int(objs[4]),
               "categoryType": int(objs[5]), "subjectIds": objs[6], "tagIndexId": int(objs[7]),
@@ -89,13 +97,12 @@ def get_arts_from_tabs_content(ses, tab_options, page_number):
               "idSectionFromUrl": int(objs[11]), "maxDocumentAge": int(objs[12]), "showCategoryForArticle": False}
     page_with_tabs = ses.post(PR3_BASE_URL +
                               "/CMS/TemplateBoxesManagement/TemplateBoxTabContent.aspx/GetTabContent",
-                              json=params, headers=headers)
+                              json=params)#, headers=headers)
     content_html = html.fromstring(
         json.loads(page_with_tabs.text)['d']['Content'])
-    articles_html = content_html.xpath(".//ul/li//a/@href")
-    if not articles_html:
-        articles_html = content_html.xpath("./section/article/a/@href")
-    articles_url = list(map(lambda art: PR3_BASE_URL + art, articles_html))
+    articles_url = list(map(lambda art: PR3_BASE_URL + art, get_articles_hrefs(content_html)))
+    if DEBUG > 1:
+        print(articles_url)
     return articles_url
 
 
@@ -104,7 +111,12 @@ def download(pr3_object):
     if article_file.is_file():
         print("   ", pr3_object["file"], "exists so skipping")
         return
-    print("    Downloading " + pr3_object["file"])
+    print("    Downloading " + pr3_object["file"], end='')
+    if DEBUG:
+        print(" " + pr3_object["url"])
+        return
+    else:
+        print("")
     r = requests.get(pr3_object["url"], allow_redirects=True)
     open(pr3_object["file"], 'wb').write(r.content)
     return
