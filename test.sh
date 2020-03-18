@@ -3,7 +3,7 @@ export PR3_DEBUG=True
 exe="./pr3-downloader.py"
 
 echo "\n*** Test get_arts_from_pages - ./section/articles/"
-$exe https://www.polskieradio.pl/9/53601
+$exe https://www.polskieradio.pl/9/5360
 
 echo "\n*** Test get_arts_from_pages from page 5 - ./section/articles/"
 $exe https://www.polskieradio.pl/9/5360 5

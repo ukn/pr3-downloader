@@ -59,8 +59,6 @@ def getContent(base_url, page_number=1):
                     continue
             files_2_download.append(
                 {"url": file_full_url, "file": article_title + ".mp3"})
-            if DEBUG > 1:
-                print("ARTICLE BODY", article_body.text)
             if DEBUG:
                 break
         ThreadPool(1).map(download, files_2_download)
@@ -71,8 +69,8 @@ def get_articles_hrefs(html_text):
     articles_hrefs = html_text.xpath("./ul/li//a/@href")
     if not articles_hrefs:
         articles_hrefs = html_text.xpath("./section/article/a/@href")
-    if DEBUG > 1:
-        print("ARTICLES HREFS", articles_hrefs)
+    if DEBUG:
+        print("DEBUG 1 article href", articles_hrefs[0])
     return articles_hrefs
 
 def get_arts_from_pages(ses, base_url, page_number):
@@ -101,8 +99,8 @@ def get_arts_from_tabs_content(ses, tab_options, page_number):
     content_html = html.fromstring(
         json.loads(page_with_tabs.text)['d']['Content'])
     articles_url = list(map(lambda art: PR3_BASE_URL + art, get_articles_hrefs(content_html)))
-    if DEBUG > 1:
-        print(articles_url)
+    if DEBUG:
+        print("DEBUG 1 article url:", articles_url[0])
     return articles_url
 
 
@@ -113,7 +111,7 @@ def download(pr3_object):
         return
     print("    Downloading " + pr3_object["file"], end='')
     if DEBUG:
-        print(" " + pr3_object["url"])
+        print(" DEBUG: " + pr3_object["url"])
         return
     else:
         print("")
