@@ -4,6 +4,7 @@ import os
 import re
 from sys import argv
 import json
+import urllib
 from pathlib import Path
 from multiprocessing.pool import ThreadPool
 from lxml import html
@@ -15,55 +16,76 @@ if "PR3_DEBUG" in os.environ:
     DEBUG = bool(os.environ["PR3_DEBUG"])
     print("DEBUG - verbose logging and not downloading, doing first element only")
 
-
 PR3_BASE_URL = "https://www.polskieradio.pl"
+
 
 def getContent(base_url, page_number=1):
     ses = requests.Session()
     base_req = ses.get(base_url)
     tree = html.fromstring(base_req.text)
-    pages = tree.xpath("//div[starts-with(@id,'ctl00_pager')]")[0]
-    last_page_html = pages.xpath("./ul/li")[-1:][0]
-    last_page = last_page_html.xpath("./a//text()")[0].strip()
-    tab_params = last_page_html.xpath("./a//@onclick")
-    print("Pages:", last_page)
+    try:
+        pages = tree.xpath("//div[starts-with(@id,'ctl00_pager')]")[0]
+        last_page_html = pages.xpath("./ul/li")[-1:][0]
+        last_page = last_page_html.xpath("./a//text()")[0].strip()
+        tab_params = last_page_html.xpath("./a//@onclick")
+        print("Pages:", last_page)
 
-    for page_no in range(int(page_number), int(last_page) + 1):
-        files_2_download = []
-        if len(tab_params) == 1:
-            articles = get_arts_from_tabs_content(ses, tab_params[0], page_no)
-        else:
-            articles = get_arts_from_pages(ses, base_url, page_no)
+        for page_no in range(int(page_number), int(last_page) + 1):
+            if len(tab_params) == 1:
+                articles = get_arts_from_tabs_content(
+                    ses, tab_params[0], page_no)
+            else:
+                articles = get_arts_from_pages(ses, base_url, page_no)
 
-        print("  Page", page_no, "of", last_page,
-              "(", len(articles), "files )")
+            print("  Page", page_no, "of", last_page,
+                  "(", len(articles), "files )")
+            files_2_download = parse_articles(ses, articles)
+            ThreadPool(1).map(download, files_2_download)
+            if DEBUG:
+                break
+    except IndexError:
+        articleSoundsList = tree.xpath("//div[@id = 'articleSoundsList']//ul/li")
+        print(len(articleSoundsList), "files to download")
+        files_2_download = parse_articles(ses, articleSoundsList)
+        ThreadPool(1).map(download, files_2_download)
 
-        for article in articles:
+
+def parse_articles(ses, articles):
+    files_for_download = []
+    for article in articles:
+        art_type = type(article).__name__
+        if art_type == "str":
             article_title = article.split(",")[-1:][0]
             article_body = ses.get(article)
             article_html = html.fromstring(article_body.text)
+        else:
+            # print("ARTICEL",html.tostring(article))
+            article_title_pre = article.xpath(
+                "./div/a[@class = 'pr-media-play']/@data-media")[0]
+            article_title = json.loads(article_title_pre)['desc']
+            #print(article_title)
+            article_html = article
+        try:
+            mp3_mess = article_html.xpath(
+                "//aside[@id = 'box-sounds']//text()")[1]
+            regex = re.compile(r"\/\/static\.prsa\.pl/.+\.mp3")
+            file_url = regex.search(mp3_mess).group(0)
+            file_full_url = "https:" + file_url
+        except IndexError:
             try:
-                mp3_mess = article_html.xpath(
-                    "//aside[@id = 'box-sounds']//text()")[1]
-                regex = re.compile(r"\/\/static\.prsa\.pl/.+\.mp3")
-                file_url = regex.search(mp3_mess).group(0)
-                file_full_url = "https:" + file_url
+                mp3_media = article_html.xpath(
+                    "./div/a[@class = 'pr-media-play']//@data-media")[0]
+                file_full_url = "https:" + json.loads(mp3_media)['file']
             except IndexError:
-                try:
-                    mp3_media = article_html.xpath(
-                        "//a[@class = 'pr-media-play']//@data-media")[0]
-                    file_full_url = "https:" + json.loads(mp3_media)['file']
-                except IndexError:
-                    print("    Can't find mp3 for",
-                          article_title, "so skipping")
-                    continue
-            files_2_download.append(
-                {"url": file_full_url, "file": article_title + ".mp3"})
-            if DEBUG:
-                break
-        ThreadPool(1).map(download, files_2_download)
+                print("    Can't find mp3 for",
+                      article_title, "so skipping")
+                continue
+        files_for_download.append(
+            {"url": file_full_url, "file": article_title + ".mp3"})
         if DEBUG:
-            break
+            return files_for_download
+    return files_for_download
+
 
 def get_articles_hrefs(html_text):
     articles_hrefs = html_text.xpath("./ul/li//a/@href")
@@ -72,6 +94,7 @@ def get_articles_hrefs(html_text):
     if DEBUG:
         print("DEBUG 1 article href", articles_hrefs[0])
     return articles_hrefs
+
 
 def get_arts_from_pages(ses, base_url, page_number):
     list_page_url = base_url + "/Strona/" + str(page_number)
@@ -95,28 +118,30 @@ def get_arts_from_tabs_content(ses, tab_options, page_number):
               "idSectionFromUrl": int(objs[11]), "maxDocumentAge": int(objs[12]), "showCategoryForArticle": False}
     page_with_tabs = ses.post(PR3_BASE_URL +
                               "/CMS/TemplateBoxesManagement/TemplateBoxTabContent.aspx/GetTabContent",
-                              json=params)#, headers=headers)
+                              json=params)  # , headers=headers)
     content_html = html.fromstring(
         json.loads(page_with_tabs.text)['d']['Content'])
-    articles_url = list(map(lambda art: PR3_BASE_URL + art, get_articles_hrefs(content_html)))
+    articles_url = list(map(lambda art: PR3_BASE_URL + art,
+                            get_articles_hrefs(content_html)))
     if DEBUG:
         print("DEBUG 1 article url:", articles_url[0])
     return articles_url
 
 
 def download(pr3_object):
-    article_file = Path(pr3_object["file"])
+    article_file_name = urllib.parse.unquote(pr3_object["file"]).replace("/", "-")
+    article_file = Path(article_file_name)
     if article_file.is_file():
-        print("   ", pr3_object["file"], "exists so skipping")
+        print("   ", article_file_name, "exists so skipping")
         return
-    print("    Downloading " + pr3_object["file"], end='')
+    print("    Downloading " + article_file_name, end='')
     if DEBUG:
         print(" DEBUG: " + pr3_object["url"])
         return
     else:
         print("")
     r = requests.get(pr3_object["url"], allow_redirects=True)
-    open(pr3_object["file"], 'wb').write(r.content)
+    open(article_file_name, 'wb').write(r.content)
     return
 
 
