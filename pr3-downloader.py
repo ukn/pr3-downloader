@@ -2,14 +2,12 @@
 
 import os
 import re
-from sys import argv, exit, stderr
+from sys import argv, stderr
 import json
 from pathlib import Path
 from functools import reduce
 from multiprocessing.pool import ThreadPool
-from time import sleep
 from lxml import html
-from lxml import etree as et
 import requests
 
 DEBUG = False
@@ -32,7 +30,7 @@ def getContent(base_url, start_page=1, end_page=None):
         pages = tree.xpath("//div[starts-with(@id,'ctl00_pager')]")[0]
         last_page_html = pages.xpath("./ul/li")[-1:][0]
         last_page = last_page_html.xpath("./a//text()")[0].strip()
-        if end_page == None:
+        if end_page is None:
             end_page = int(last_page)
         tab_params = last_page_html.xpath("./a//@onclick")
         print(
@@ -136,19 +134,19 @@ def get_arts_from_tabs_content(ses, tab_options, page_number):
     return articles_url
 
 
-def download(object):
+def download(file_object):
     columns = os.get_terminal_size().columns
     global STATE
     CLR = "\x1B[0K"
-    filename = f'{object["file"]}'
+    filename = f'{file_object["file"]}'
     if Path(filename).is_file():
         print(f"    {filename} exists so skipping")
         return
     if DEBUG:
-        print("[DEBUG] " + object["url"])
+        print("[DEBUG] " + file_object["url"])
         return
     try:
-        r = requests.get(object["url"], allow_redirects=True, stream=True)
+        r = requests.get(file_object["url"], allow_redirects=True, stream=True)
         # Estimates the number of bar updates
         block_size = 1024 * 1024
         file_size = int(r.headers.get('Content-Length', None))
@@ -162,19 +160,17 @@ def download(object):
                 # display progress dynamically only if fits the terminal
                 state_length = reduce(
                     lambda acc, file: acc + len(file) + len(STATE[file]), STATE, 10*THREADPOOL)
-                if columns > state_length:
-                    if (i % 4 == 0):
-                        print(f"{STATE}{CLR}", end="\r")
+                if columns > state_length and i % 4 == 0:
+                    print(f"{STATE}{CLR}", end="\r")
         STATE[filename] = '100%'
         os.rename(filename + ".tmp", filename)
     except Exception as e:
         print(f'Downloading stopped {filename}: {e}', file=stderr)
         if Path(filename).is_file():
             os.unlink(filename)
-        return filename
+        return
     print(f"    {filename} downloaded{CLR}")
     STATE.pop(filename)
-    return filename
 
 
 def printHelp():
