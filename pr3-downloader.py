@@ -2,6 +2,7 @@
 
 import os
 import re
+import sys
 from sys import argv, stderr
 import json
 from pathlib import Path
@@ -192,7 +193,7 @@ def main():
             printHelp()
     except KeyboardInterrupt:
         print("\nExiting...")
-        exit()
+        sys.exit()
 
 
 main()
